@@ -5,12 +5,16 @@ include '../includes/header.php';
 
 $pdo = conectar();
 
-// Estadísticas
+// Estadísticas en tiempo real calculadas desde la base de datos.
 $total_animales    = $pdo->query("SELECT COUNT(*) FROM animales")->fetchColumn();
 $disponibles       = $pdo->query("SELECT COUNT(*) FROM animales WHERE estado='disponible'")->fetchColumn();
-$total_adopciones  = $pdo->query("SELECT COUNT(*) FROM adopciones")->fetchColumn();
-$total_donaciones  = $pdo->query("SELECT SUM(monto) FROM donaciones WHERE tipo='monetaria'")->fetchColumn();
-$total_voluntarios = $pdo->query("SELECT COUNT(*) FROM voluntarios WHERE estado='activo'")->fetchColumn();
+$adoptados         = $pdo->query("SELECT COUNT(*) FROM animales WHERE estado='adoptado'")->fetchColumn();
+$tratamiento       = $pdo->query("SELECT COUNT(*) FROM animales WHERE estado='en_tratamiento'")->fetchColumn();
+$adopciones_mes    = $pdo->query("SELECT COUNT(*) FROM adopciones WHERE MONTH(COALESCE(fecha_adopcion, fecha_solicitud)) = MONTH(CURDATE()) AND YEAR(COALESCE(fecha_adopcion, fecha_solicitud)) = YEAR(CURDATE())")->fetchColumn();
+$nuevos_ingresos   = $pdo->query("SELECT COUNT(*) FROM animales WHERE MONTH(COALESCE(fecha_ingreso, fecha_rescate)) = MONTH(CURDATE()) AND YEAR(COALESCE(fecha_ingreso, fecha_rescate)) = YEAR(CURDATE())")->fetchColumn();
+$total_donaciones  = $pdo->query("SELECT SUM(monto) FROM donaciones WHERE tipo IN ('dinero','monetaria')")->fetchColumn();
+$total_gastos      = tableExists($pdo, 'gastos') ? $pdo->query("SELECT SUM(monto) FROM gastos")->fetchColumn() : 0;
+$stock_bajo        = tableExists($pdo, 'inventario') ? $pdo->query("SELECT COUNT(*) FROM inventario WHERE cantidad <= stock_minimo")->fetchColumn() : 0;
 
 // Últimos animales registrados
 $animales_recientes = $pdo->query("SELECT * FROM animales ORDER BY creado_en DESC LIMIT 5")->fetchAll();
@@ -23,14 +27,26 @@ $adopciones_recientes = $pdo->query("
     JOIN adoptantes ad ON a.adoptante_id = ad.id
     ORDER BY a.creado_en DESC LIMIT 5
 ")->fetchAll();
+
+$estados = $pdo->query("SELECT estado, COUNT(*) total FROM animales GROUP BY estado")->fetchAll();
+$maxEstado = max(1, ...array_map(fn($e) => (int)$e['total'], $estados ?: [['total'=>1]]));
 ?>
 
-<!-- Estadísticas -->
+<div class="hero-panel">
+    <div>
+        <span class="hero-badge">🐾 Panel vivo</span>
+        <h2>Resumen operativo del refugio</h2>
+        <p>Indicadores, adopciones, alertas de inventario y flujo económico en Bolivianos.</p>
+    </div>
+    <a href="galeria.php" class="btn btn-primary">Ver galería de adopción</a>
+</div>
+
+<!-- Tarjetas KPI: cada cifra se actualiza desde consultas SQL simples. -->
 <div class="stats-grid">
     <div class="stat-card">
         <div class="stat-icon">🐾</div>
         <div>
-            <div class="stat-label">Total Animales</div>
+            <div class="stat-label">Total Mascotas</div>
             <div class="stat-value"><?= $total_animales ?></div>
         </div>
     </div>
@@ -44,28 +60,68 @@ $adopciones_recientes = $pdo->query("
     <div class="stat-card azul">
         <div class="stat-icon">🏠</div>
         <div>
-            <div class="stat-label">Adopciones</div>
-            <div class="stat-value"><?= $total_adopciones ?></div>
+            <div class="stat-label">Adoptadas</div>
+            <div class="stat-value"><?= $adoptados ?></div>
         </div>
     </div>
     <div class="stat-card">
         <div class="stat-icon">💝</div>
         <div>
-            <div class="stat-label">Donaciones ($)</div>
-            <div class="stat-value">$<?= number_format($total_donaciones ?? 0, 0) ?></div>
+            <div class="stat-label">En tratamiento</div>
+            <div class="stat-value"><?= $tratamiento ?></div>
         </div>
     </div>
     <div class="stat-card rojo">
-        <div class="stat-icon">🙋</div>
+        <div class="stat-icon">📅</div>
         <div>
-            <div class="stat-label">Voluntarios</div>
-            <div class="stat-value"><?= $total_voluntarios ?></div>
+            <div class="stat-label">Adopciones del mes</div>
+            <div class="stat-value"><?= $adopciones_mes ?></div>
+        </div>
+    </div>
+    <div class="stat-card">
+        <div class="stat-icon">🆕</div>
+        <div>
+            <div class="stat-label">Nuevos ingresos</div>
+            <div class="stat-value"><?= $nuevos_ingresos ?></div>
+        </div>
+    </div>
+    <div class="stat-card azul">
+        <div class="stat-icon">💝</div>
+        <div>
+            <div class="stat-label">Donaciones</div>
+            <div class="stat-value small"><?= moneyBs($total_donaciones ?? 0) ?></div>
+        </div>
+    </div>
+    <div class="stat-card rojo">
+        <div class="stat-icon">⚠️</div>
+        <div>
+            <div class="stat-label">Stock bajo</div>
+            <div class="stat-value"><?= $stock_bajo ?></div>
         </div>
     </div>
 </div>
 
+<div class="charts-grid">
+    <div class="card padded">
+        <h2>📈 Estado de mascotas</h2>
+        <?php foreach ($estados as $estado): $w = ((int)$estado['total'] / $maxEstado) * 100; ?>
+        <div class="bar-row">
+            <span><?= ucfirst(str_replace('_',' ', e($estado['estado']))) ?></span>
+            <div class="bar-track"><div class="bar-fill" style="width:<?= $w ?>%"></div></div>
+            <strong><?= (int)$estado['total'] ?></strong>
+        </div>
+        <?php endforeach; ?>
+    </div>
+    <div class="card padded">
+        <h2>💰 Flujo económico</h2>
+        <div class="money-row"><span>Ingresos por donaciones</span><strong><?= moneyBs($total_donaciones ?? 0) ?></strong></div>
+        <div class="money-row"><span>Gastos registrados</span><strong><?= moneyBs($total_gastos ?? 0) ?></strong></div>
+        <div class="money-row total"><span>Balance estimado</span><strong><?= moneyBs(($total_donaciones ?? 0) - ($total_gastos ?? 0)) ?></strong></div>
+    </div>
+</div>
+
 <!-- Tablas resumen -->
-<div style="display:grid; grid-template-columns:1fr 1fr; gap:20px;">
+<div class="two-column">
 
     <!-- Animales recientes -->
     <div class="card">

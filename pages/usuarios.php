@@ -3,7 +3,8 @@ require_once '../includes/config.php';
 $titulo = 'Gestión de Usuarios';
 $pdo = conectar();
 
-// Solo administradores
+// Seguridad del módulo: primero exige sesión y luego valida rol administrador.
+verificarLogin();
 if ($_SESSION['rol'] !== 'administrador') {
     setFlash('error', 'No tienes permisos para acceder a esta sección.');
     header("Location: dashboard.php");
