@@ -5,9 +5,8 @@ $pdo = conectar();
 
 $accion = $_GET['accion'] ?? 'listar';
 
-// GUARDAR
+// Registra donaciones monetarias o en especie; las monetarias se expresan en Bolivianos.
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['guardar'])) {
-    // Crear donante si es nuevo
     $donante_id = (int)$_POST['donante_id'];
     if (!$donante_id && !empty($_POST['nuevo_nombre'])) {
         $pdo->prepare("INSERT INTO donantes (nombre,telefono,email,direccion) VALUES (?,?,?,?)")->execute([
@@ -18,16 +17,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['guardar'])) {
         ]);
         $donante_id = $pdo->lastInsertId();
     }
-    $pdo->prepare("INSERT INTO donaciones (donante_id,fecha,tipo,monto,descripcion,metodo_pago,responsable_id)
-        VALUES (?,?,?,?,?,?,?)")->execute([
+    $pdo->prepare("INSERT INTO donaciones (donante_id,fecha,tipo,monto,cantidad,unidad,descripcion,observaciones,metodo_pago,responsable_id)
+        VALUES (?,?,?,?,?,?,?,?,?,?)")->execute([
         $donante_id,
         $_POST['fecha'],
         $_POST['tipo'],
         (float)$_POST['monto'],
+        (float)($_POST['cantidad'] ?: 0),
+        trim($_POST['unidad']),
         trim($_POST['descripcion']),
+        trim($_POST['observaciones']),
         $_POST['metodo_pago'],
         $_SESSION['usuario_id'],
     ]);
+    logAudit($pdo, 'crear', 'donaciones', (int)$pdo->lastInsertId(), 'Donación registrada');
     setFlash('success', 'Donación registrada correctamente.');
     header("Location: donaciones.php");
     exit;
@@ -56,15 +59,26 @@ if ($accion === 'nueva'):
                 <input type="date" name="fecha" value="<?= date('Y-m-d') ?>" required>
             </div>
             <div class="form-group">
-                <label>Tipo *</label>
+                <label>Tipo de donación *</label>
                 <select name="tipo" required>
-                    <option value="monetaria">Monetaria</option>
-                    <option value="especie">En especie</option>
+                    <option value="dinero">Dinero</option>
+                    <option value="alimento">Alimento</option>
+                    <option value="medicina">Medicina</option>
+                    <option value="accesorios">Accesorios</option>
+                    <option value="especie">Otros en especie</option>
                 </select>
             </div>
             <div class="form-group">
-                <label>Monto ($)</label>
+                <label>Monto (Bs.)</label>
                 <input type="number" step="0.01" name="monto" placeholder="0.00">
+            </div>
+            <div class="form-group">
+                <label>Cantidad</label>
+                <input type="number" step="0.01" name="cantidad" placeholder="Ej: 20">
+            </div>
+            <div class="form-group">
+                <label>Unidad</label>
+                <input type="text" name="unidad" placeholder="kg, unidad, caja">
             </div>
             <div class="form-group">
                 <label>Método de Pago</label>
@@ -78,6 +92,10 @@ if ($accion === 'nueva'):
             <div class="form-group full">
                 <label>Descripción</label>
                 <input type="text" name="descripcion" placeholder="Descripción de la donación...">
+            </div>
+            <div class="form-group full">
+                <label>Observaciones</label>
+                <textarea name="observaciones" placeholder="Notas adicionales del donante o entrega..."></textarea>
             </div>
         </div>
 
@@ -107,8 +125,8 @@ $donaciones = $pdo->query("
 ")->fetchAll();
 
 // Totales
-$total_mon   = array_sum(array_column(array_filter($donaciones, fn($d)=>$d['tipo']==='monetaria'), 'monto'));
-$total_esp   = count(array_filter($donaciones, fn($d)=>$d['tipo']==='especie'));
+$total_mon   = array_sum(array_column(array_filter($donaciones, fn($d)=>in_array($d['tipo'], ['dinero','monetaria'], true)), 'monto'));
+$total_esp   = count(array_filter($donaciones, fn($d)=>!in_array($d['tipo'], ['dinero','monetaria'], true)));
 ?>
 
 <!-- Resumen -->
@@ -117,7 +135,7 @@ $total_esp   = count(array_filter($donaciones, fn($d)=>$d['tipo']==='especie'));
         <div class="stat-icon">💵</div>
         <div>
             <div class="stat-label">Total Monetario</div>
-            <div class="stat-value">$<?= number_format($total_mon, 2) ?></div>
+            <div class="stat-value small"><?= moneyBs($total_mon) ?></div>
         </div>
     </div>
     <div class="stat-card naranja">
@@ -144,7 +162,7 @@ $total_esp   = count(array_filter($donaciones, fn($d)=>$d['tipo']==='especie'));
     <div class="table-wrap">
         <table>
             <thead>
-                <tr><th>#</th><th>Donante</th><th>Fecha</th><th>Tipo</th><th>Monto</th><th>Descripción</th><th>Método</th><th>Responsable</th></tr>
+                <tr><th>#</th><th>Donante</th><th>Fecha</th><th>Tipo</th><th>Monto/Cantidad</th><th>Descripción</th><th>Método</th><th>Responsable</th></tr>
             </thead>
             <tbody>
             <?php foreach ($donaciones as $d): ?>
@@ -153,12 +171,12 @@ $total_esp   = count(array_filter($donaciones, fn($d)=>$d['tipo']==='especie'));
                 <td><strong><?= e($d['donante_nombre']) ?></strong></td>
                 <td><?= date('d/m/Y', strtotime($d['fecha'])) ?></td>
                 <td>
-                    <span class="badge <?= $d['tipo']==='monetaria'?'badge-verde':'badge-azul' ?>">
+                    <span class="badge <?= in_array($d['tipo'], ['dinero','monetaria'], true)?'badge-verde':'badge-azul' ?>">
                         <?= ucfirst($d['tipo']) ?>
                     </span>
                 </td>
-                <td><?= $d['tipo']==='monetaria' ? '$'.number_format($d['monto'],2) : '-' ?></td>
-                <td><?= e($d['descripcion']) ?: '-' ?></td>
+                <td><?= in_array($d['tipo'], ['dinero','monetaria'], true) ? moneyBs($d['monto']) : e($d['cantidad'] . ' ' . $d['unidad']) ?></td>
+                <td><?= e($d['descripcion']) ?: '-' ?><br><small><?= e($d['observaciones'] ?? '') ?></small></td>
                 <td><?= ucfirst(e($d['metodo_pago'])) ?></td>
                 <td><?= e($d['responsable_nombre'] ?? '-') ?></td>
             </tr>

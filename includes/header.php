@@ -1,5 +1,5 @@
 <?php
-// includes/header.php
+// Cabecera compartida: valida sesión, calcula página activa y pinta la navegación global.
 verificarLogin();
 $flash = getFlash();
 $pagina_actual = basename($_SERVER['PHP_SELF']);
@@ -25,13 +25,31 @@ $pagina_actual = basename($_SERVER['PHP_SELF']);
             <span class="nav-icon">📊</span> Dashboard
         </a>
         <a href="animales.php" class="nav-item <?= $pagina_actual=='animales.php'?'active':'' ?>">
-            <span class="nav-icon">🐶</span> Animales
+            <span class="nav-icon">🐶</span> Mascotas
+        </a>
+        <a href="galeria.php" class="nav-item <?= $pagina_actual=='galeria.php'?'active':'' ?>">
+            <span class="nav-icon">🖼️</span> Galería
         </a>
         <a href="adopciones.php" class="nav-item <?= $pagina_actual=='adopciones.php'?'active':'' ?>">
             <span class="nav-icon">🏠</span> Adopciones
         </a>
+        <a href="historial_adopciones.php" class="nav-item <?= $pagina_actual=='historial_adopciones.php'?'active':'' ?>">
+            <span class="nav-icon">📜</span> Historial
+        </a>
         <a href="donaciones.php" class="nav-item <?= $pagina_actual=='donaciones.php'?'active':'' ?>">
             <span class="nav-icon">💝</span> Donaciones
+        </a>
+        <a href="gastos.php" class="nav-item <?= $pagina_actual=='gastos.php'?'active':'' ?>">
+            <span class="nav-icon">💸</span> Gastos
+        </a>
+        <a href="inventario.php" class="nav-item <?= $pagina_actual=='inventario.php'?'active':'' ?>">
+            <span class="nav-icon">📦</span> Inventario
+        </a>
+        <a href="seguimientos.php" class="nav-item <?= $pagina_actual=='seguimientos.php'?'active':'' ?>">
+            <span class="nav-icon">🩺</span> Seguimiento
+        </a>
+        <a href="reportes.php" class="nav-item <?= $pagina_actual=='reportes.php'?'active':'' ?>">
+            <span class="nav-icon">📄</span> Reportes
         </a>
         <a href="voluntarios.php" class="nav-item <?= $pagina_actual=='voluntarios.php'?'active':'' ?>">
             <span class="nav-icon">🙋</span> Voluntarios
@@ -57,7 +75,11 @@ $pagina_actual = basename($_SERVER['PHP_SELF']);
 <!-- CONTENIDO PRINCIPAL -->
 <div class="main-content">
     <div class="topbar">
-        <h1 class="page-title"><?= $titulo ?? 'Panel' ?></h1>
+        <div>
+            <h1 class="page-title"><?= $titulo ?? 'Panel' ?></h1>
+            <p class="page-subtitle">Administración integral del refugio de animales</p>
+        </div>
+        <button type="button" class="theme-toggle" onclick="toggleTheme()">🌙 Modo oscuro</button>
     </div>
 
     <?php if ($flash): ?>
@@ -67,3 +89,13 @@ $pagina_actual = basename($_SERVER['PHP_SELF']);
     <?php endif; ?>
 
     <div class="content-body">
+<script>
+// Modo oscuro: se guarda en el navegador para que el usuario conserve su preferencia.
+function toggleTheme() {
+    document.body.classList.toggle('dark-mode');
+    localStorage.setItem('refugio_theme', document.body.classList.contains('dark-mode') ? 'dark' : 'light');
+}
+if (localStorage.getItem('refugio_theme') === 'dark') {
+    document.body.classList.add('dark-mode');
+}
+</script>
